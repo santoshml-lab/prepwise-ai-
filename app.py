@@ -41,16 +41,20 @@ def chat(data: dict):
     user_usage[user_id] = used + 1
 
     # AI CALL
-    completion = client.chat.completions.create(
-        model="llama3-70b-versatile",
+    
+      completion = client.chat.completions.create(
+    model="llama3-70b-versatile",
     messages=[
-        messages=[
-            {"role": "system", "content": "You are an interview coach."},
-            {"role": "user", "content": message}
-        ]
+        {"role": "system", "content": "You are an interview coach."},
+        {"role": "user", "content": message}
     ]
+)
 
-    reply = completion.choices[0].message.content
+reply = completion.choices[0].message.content  
+        
+            
+
+    
 
     return {"reply": reply}
 
