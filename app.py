@@ -48,7 +48,7 @@ def chat(data: dict):
             {"role": "system", "content": "You are an interview coach."},
             {"role": "user", "content": message}
         ]
-    )
+    ]
 
     reply = completion.choices[0].message.content
 
