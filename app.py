@@ -5,7 +5,9 @@ import os
 
 app = FastAPI()
 
-# CORS (frontend connect ke liye)
+# -----------------------------
+# CORS SETUP (Frontend connect)
+# -----------------------------
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -14,10 +16,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Groq Client
+# -----------------------------
+# GROQ CLIENT
+# -----------------------------
 client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
-# Simple in-memory storage (later DB use karna)
+# -----------------------------
+# SIMPLE IN-MEMORY STORAGE
+# (Later DB use karna hai)
+# -----------------------------
 user_usage = {}
 user_scores = {}
 
@@ -31,32 +38,40 @@ FREE_LIMIT = 3
 def chat(data: dict):
 
     user_id = data.get("user_id", "guest")
-    message = data.get("message")
+    message = data.get("message", "")
 
     # usage limit check
     used = user_usage.get(user_id, 0)
+
     if used >= FREE_LIMIT:
-        return {"reply": "🚫 Free limit over. Please upgrade to premium."}
+        return {
+            "reply": "🚫 Free limit over. Please upgrade to premium."
+        }
 
     user_usage[user_id] = used + 1
 
-    # AI CALL
-    
-      completion = client.chat.completions.create(
-    model="llama3-70b-versatile",
-    messages=[
-        {"role": "system", "content": "You are an interview coach."},
-        {"role": "user", "content": message}
-    ]
-)
+    # AI CALL (FIXED)
+    completion = client.chat.completions.create(
+        model="llama3-70b-versatile",
+        messages=[
+            {
+                "role": "system",
+                "content": "You are a strict but helpful interview coach. Give short, clear answers."
+            },
+            {
+                "role": "user",
+                "content": message
+            }
+        ]
+    )
 
-reply = completion.choices[0].message.content  
-        
-            
+    reply = completion.choices[0].message.content
 
-    
-
-    return {"reply": reply}
+    return {
+        "reply": reply,
+        "used": user_usage[user_id],
+        "limit": FREE_LIMIT
+    }
 
 
 # -----------------------------
@@ -66,7 +81,7 @@ reply = completion.choices[0].message.content
 def dashboard(user_id: str = "guest"):
 
     usage = user_usage.get(user_id, 0)
-    score = user_scores.get(user_id, 75)  # demo score
+    score = user_scores.get(user_id, 75)
 
     return {
         "user_id": user_id,
@@ -88,11 +103,15 @@ def save_score(data: dict):
 
     user_scores[user_id] = score
 
-    return {"msg": "score saved"}
+    return {
+        "msg": "score saved successfully",
+        "user_id": user_id,
+        "score": score
+    }
 
 
 # -----------------------------
-# RESUME UPLOAD (BASIC)
+# RESUME UPLOAD API
 # -----------------------------
 @app.post("/upload-resume")
 async def upload_resume(file: UploadFile = File(...)):
@@ -102,5 +121,17 @@ async def upload_resume(file: UploadFile = File(...)):
     return {
         "filename": file.filename,
         "size": len(content),
-        "msg": "uploaded successfully"
+        "msg": "resume uploaded successfully"
+    }
+
+
+# -----------------------------
+# ROOT CHECK
+# -----------------------------
+@app.get("/")
+def home():
+
+    return {
+        "status": "running",
+        "message": "InterviewGPT backend is live 🚀"
     }
