@@ -42,7 +42,8 @@ def chat(data: dict):
 
     # AI CALL
     completion = client.chat.completions.create(
-        model="llama3-70b-8192",
+        model="llama3-70b-versatile",
+    messages=[
         messages=[
             {"role": "system", "content": "You are an interview coach."},
             {"role": "user", "content": message}
