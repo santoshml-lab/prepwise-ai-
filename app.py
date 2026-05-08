@@ -52,7 +52,7 @@ def chat(data: dict):
 
     # AI CALL (FIXED)
     completion = client.chat.completions.create(
-        model="llama3-70b-versatile",
+        model="llama-3.1-8b-instant",
         messages=[
             {
                 "role": "system",
