@@ -2,11 +2,12 @@ from fastapi import FastAPI, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from groq import Groq
 import os
+import sqlite3
 
 app = FastAPI()
 
 # -----------------------------
-# CORS SETUP (Frontend connect)
+# CORS
 # -----------------------------
 app.add_middleware(
     CORSMiddleware,
@@ -22,17 +23,26 @@ app.add_middleware(
 client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
 # -----------------------------
-# SIMPLE IN-MEMORY STORAGE
-# (Later DB use karna hai)
+# DATABASE (NEW UPGRADE)
 # -----------------------------
-user_usage = {}
-user_scores = {}
+conn = sqlite3.connect("prepwise.db", check_same_thread=False)
+cursor = conn.cursor()
+
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS users (
+    user_id TEXT PRIMARY KEY,
+    usage INTEGER DEFAULT 0,
+    score INTEGER DEFAULT 0
+)
+""")
+
+conn.commit()
 
 FREE_LIMIT = 3
 
 
 # -----------------------------
-# CHAT API (AI INTERVIEW)
+# CHAT API (AI INTERVIEW + SCORE)
 # -----------------------------
 @app.post("/chat")
 def chat(data: dict):
@@ -40,23 +50,34 @@ def chat(data: dict):
     user_id = data.get("user_id", "guest")
     message = data.get("message", "")
 
-    # usage limit check
-    used = user_usage.get(user_id, 0)
+    cursor.execute("SELECT usage, score FROM users WHERE user_id=?", (user_id,))
+    row = cursor.fetchone()
 
-    if used >= FREE_LIMIT:
+    if row:
+        usage, score = row
+    else:
+        usage, score = 0, 0
+
+    if usage >= FREE_LIMIT:
         return {
-            "reply": "🚫 Free limit over. Please upgrade to premium."
+            "reply": "🚫 Free limit over. Please upgrade."
         }
 
-    user_usage[user_id] = used + 1
+    usage += 1
 
-    # AI CALL (FIXED)
     completion = client.chat.completions.create(
         model="llama-3.1-8b-instant",
         messages=[
             {
                 "role": "system",
-                "content": "You are a strict but helpful interview coach. Give short, clear answers."
+                "content": """
+You are an AI Interview Evaluator.
+
+Return:
+- Status (Correct / Wrong / Partial)
+- Score out of 10
+- Short feedback
+"""
             },
             {
                 "role": "user",
@@ -67,33 +88,63 @@ def chat(data: dict):
 
     reply = completion.choices[0].message.content
 
+    # extract score (simple fallback logic)
+    new_score = score
+    if "Score" in reply:
+        try:
+            import re
+            match = re.search(r"(\d+)", reply)
+            if match:
+                new_score = int(match.group(1))
+        except:
+            pass
+
+    # save to DB
+    cursor.execute("""
+        INSERT OR REPLACE INTO users (user_id, usage, score)
+        VALUES (?, ?, ?)
+    """, (user_id, usage, new_score))
+
+    conn.commit()
+
     return {
         "reply": reply,
-        "used": user_usage[user_id],
+        "used": usage,
         "limit": FREE_LIMIT
     }
 
 
 # -----------------------------
-# DASHBOARD API
+# DASHBOARD API (REAL DATA)
 # -----------------------------
 @app.get("/dashboard")
 def dashboard(user_id: str = "guest"):
 
-    usage = user_usage.get(user_id, 0)
-    score = user_scores.get(user_id, 75)
+    cursor.execute("SELECT usage, score FROM users WHERE user_id=?", (user_id,))
+    row = cursor.fetchone()
+
+    if not row:
+        return {
+            "user_id": user_id,
+            "used_interviews": 0,
+            "score": 0,
+            "free_limit": FREE_LIMIT,
+            "status": "free"
+        }
+
+    usage, score = row
 
     return {
         "user_id": user_id,
         "used_interviews": usage,
-        "free_limit": FREE_LIMIT,
         "score": score,
-        "status": "free" if usage < FREE_LIMIT else "locked"
+        "free_limit": FREE_LIMIT,
+        "status": "locked" if usage >= FREE_LIMIT else "free"
     }
 
 
 # -----------------------------
-# SAVE SCORE API
+# SAVE SCORE (OPTIONAL)
 # -----------------------------
 @app.post("/save-score")
 def save_score(data: dict):
@@ -101,17 +152,22 @@ def save_score(data: dict):
     user_id = data.get("user_id", "guest")
     score = data.get("score", 0)
 
-    user_scores[user_id] = score
+    cursor.execute("""
+        INSERT OR REPLACE INTO users (user_id, usage, score)
+        VALUES (?, COALESCE((SELECT usage FROM users WHERE user_id=?),0), ?)
+    """, (user_id, user_id, score))
+
+    conn.commit()
 
     return {
-        "msg": "score saved successfully",
+        "msg": "score saved",
         "user_id": user_id,
         "score": score
     }
 
 
 # -----------------------------
-# RESUME UPLOAD API
+# RESUME UPLOAD
 # -----------------------------
 @app.post("/upload-resume")
 async def upload_resume(file: UploadFile = File(...)):
@@ -126,12 +182,11 @@ async def upload_resume(file: UploadFile = File(...)):
 
 
 # -----------------------------
-# ROOT CHECK
+# HEALTH CHECK
 # -----------------------------
 @app.get("/")
 def home():
-
     return {
         "status": "running",
-        "message": "InterviewGPT backend is live 🚀"
+        "message": "PrepWise AI backend live 🚀"
     }
