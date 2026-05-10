@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from groq import Groq
 import os
+import json
 
 app = FastAPI()
 
@@ -16,10 +17,13 @@ app.add_middleware(
 )
 
 # ---------------- AI CLIENT ----------------
-client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+client = Groq(
+    api_key=os.getenv("GROQ_API_KEY")
+)
 
 # ---------------- RULE ENGINE ----------------
 RULES = {
+
     "exam": """
 You are an exam system.
 
@@ -51,108 +55,138 @@ Rules:
 # ---------------- ROOT ----------------
 @app.get("/")
 def home():
-    return {"status": "AI Exam Engine Running 🚀"}
+
+    return {
+        "status": "AI Exam Engine Running 🚀"
+    }
 
 # ---------------- START EXAM ----------------
 @app.get("/start/{topic}")
 def start_exam(topic: str, mode: str = "exam"):
+
     system_prompt = f"""
-You are an AI exam generator.
+{RULES.get(mode, RULES["exam"])}
 
 Topic: {topic}
 
-Rules:
-- Generate exactly 5 questions
-- Each must have:
-  - question
-  - expected answer
+Generate exactly 5 questions.
 
-STRICT OUTPUT FORMAT (VERY IMPORTANT):
+Each question must contain:
+- question
+- answer
 
-Return ONLY valid JSON like this:
+STRICT RULES:
+- Return ONLY valid JSON
+- No markdown
+- No explanation
+- No headings
+
+Format:
 
 [
-  {
-    "question": "...",
-    "answer": "..."
-  },
-  {
-    "question": "...",
-    "answer": "..."
-  }
+  {{
+    "question": "What is OOP?",
+    "answer": "Object Oriented Programming"
+  }},
+  {{
+    "question": "What is inheritance?",
+    "answer": "Inheritance allows one class to use another class properties"
+  }}
 ]
-
-NO extra text. NO headings. NO markdown. ONLY JSON.
 """
-    
-
-    
-
-
-
-
-
-
-
-
-   
-
-
-   
-
-
-   
-
-
-   
-
-
-   
-
 
     completion = client.chat.completions.create(
+
         model="llama-3.1-8b-instant",
+
         messages=[
-            {"role": "system", "content": system_prompt}
+            {
+                "role": "system",
+                "content": system_prompt
+            }
         ]
+
     )
 
+    ai_output = completion.choices[0].message.content
+
+    try:
+
+        questions = json.loads(ai_output)
+
+    except:
+
+        questions = {
+            "raw_output": ai_output
+        }
+
     return {
+
         "topic": topic,
         "mode": mode,
-        "exam": completion.choices[0].message.content
+        "questions": questions
     }
 
-# ---------------- EVALUATE ANSWER ----------------
+# ---------------- ANSWER MODEL ----------------
 class Answer(BaseModel):
+
     question: str
     expected: str
     user_answer: str
 
+# ---------------- EVALUATE ANSWER ----------------
 @app.post("/evaluate")
 def evaluate(data: Answer):
 
     completion = client.chat.completions.create(
+
         model="llama-3.1-8b-instant",
+
         messages=[
+
             {
                 "role": "system",
                 "content": f"""
-Evaluate this answer:
+You are an AI answer evaluator.
 
-Question: {data.question}
-Expected: {data.expected}
-User: {data.user_answer}
+Question:
+{data.question}
 
-Give:
-Score /10
-Status (Correct/Partial/Wrong)
-Short Feedback
+Expected Answer:
+{data.expected}
+
+User Answer:
+{data.user_answer}
+
+Evaluate fairly.
+
+Return format:
+
+{{
+  "score": 8,
+  "status": "Correct",
+  "feedback": "Good understanding of concept"
+}}
+
+ONLY RETURN JSON.
 """
             }
+
         ]
+
     )
 
-    return {
-        "result": completion.choices[0].message.content
-    }
+    result = completion.choices[0].message.content
+
+    try:
+
+        parsed = json.loads(result)
+
+    except:
+
+        parsed = {
+            "raw_output": result
+        }
+
+    return parsed
+    
