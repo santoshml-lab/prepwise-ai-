@@ -56,31 +56,59 @@ def home():
 # ---------------- START EXAM ----------------
 @app.get("/start/{topic}")
 def start_exam(topic: str, mode: str = "exam"):
-
     system_prompt = f"""
-{RULES.get(mode, RULES['exam'])}
+You are an AI exam generator.
 
 Topic: {topic}
 
-Generate 5 questions with expected answers.
+Rules:
+- Generate exactly 5 questions
+- Each must have:
+  - question
+  - expected answer
 
-Return format:
+STRICT OUTPUT FORMAT (VERY IMPORTANT):
 
-1. Question: ...
-   Answer: ...
+Return ONLY valid JSON like this:
 
-2. Question: ...
-   Answer: ...
+[
+  {
+    "question": "...",
+    "answer": "..."
+  },
+  {
+    "question": "...",
+    "answer": "..."
+  }
+]
 
-3. Question: ...
-   Answer: ...
-
-4. Question: ...
-   Answer: ...
-
-5. Question: ...
-   Answer: ...
+NO extra text. NO headings. NO markdown. ONLY JSON.
 """
+    
+
+    
+
+
+
+
+
+
+
+
+   
+
+
+   
+
+
+   
+
+
+   
+
+
+   
+
 
     completion = client.chat.completions.create(
         model="llama-3.1-8b-instant",
